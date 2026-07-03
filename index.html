@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mario Kart 8 Deluxe Stats Calculator</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: Verdana, Geneva, sans-serif;
+    font-size: 11px;
+    background: #9a9a9a;
+    color: #000;
+    margin: 0;
+    padding: 8px;
+  }
+  h1 { font-size: 15px; margin: 0 0 2px; }
+  a { color: #003a80; }
+  .sub { font-size: 10px; margin: 0 0 8px; color: #222; }
+
+  .panel {
+    background: #cccccc;
+    border: 1px solid #000;
+    margin: 0 0 10px;
+  }
+  .panel > .titlebar {
+    background: #000;
+    color: #fff;
+    font-weight: bold;
+    padding: 3px 6px;
+    font-size: 11px;
+  }
+  .panel > .body { padding: 6px; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .col { flex: 1 1 0; min-width: 150px; }
+
+  label.hd { font-weight: bold; display: block; margin: 0 0 2px; }
+  select.picker {
+    width: 100%;
+    font-family: Verdana, sans-serif;
+    font-size: 10px;
+    border: 1px solid #000;
+    background: #fff;
+  }
+  select.picker option.grp-small  { background: #d6ecff; }
+  select.picker option.grp-medium { background: #fff4d6; }
+  select.picker option.grp-large  { background: #ffe0e0; }
+
+  .toggle { margin: 0 0 6px; font-size: 10px; }
+  .toggle label { margin-right: 10px; cursor: pointer; }
+
+  .members {
+    font-size: 10px;
+    background: #e6e6e6;
+    border: 1px solid #000;
+    padding: 3px 5px;
+    margin-top: 4px;
+    min-height: 16px;
+  }
+  .members b { color: #333; }
+
+  /* meters */
+  .meters { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+  .metercol { flex: 1 1 260px; min-width: 240px; }
+  .meter {
+    display: flex; align-items: center;
+    gap: 6px; margin: 1px 0;
+  }
+  .meter .mlabel { width: 118px; text-align: right; font-size: 10px; }
+  .meter canvas { border: 0; display: block; }
+  .meter .mval { width: 34px; text-align: left; font-weight: bold; font-size: 10px; }
+  .sephead { font-weight: bold; font-size: 10px; margin: 6px 0 2px; border-bottom: 1px solid #000; }
+
+  /* finder */
+  table.cond { border-collapse: collapse; font-size: 10px; }
+  table.cond td, table.cond th { padding: 1px 4px; border: 0; }
+  table.cond .sep td { border-top: 1px solid #000; height: 3px; padding: 0; }
+  .radios label { margin: 0 2px; cursor: pointer; white-space: nowrap; }
+  .opts { font-size: 10px; margin: 4px 0; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid #000; background: #fff; max-height: 420px; overflow-y: auto; }
+  table.data { border-collapse: collapse; font-size: 10px; width: 100%; white-space: nowrap; }
+  table.data th, table.data td {
+    border: 1px solid #999; padding: 2px 5px; text-align: center;
+  }
+  table.data th {
+    background: #333; color: #fff; position: sticky; top: 0; z-index: 2;
+  }
+  table.data td.name { text-align: left; white-space: normal; min-width: 150px; }
+  table.data td.sepcol, table.data th.sepcol { background: #000; padding: 0 2px; min-width: 2px; }
+  .cell-up { background: #bff0bf; }
+  .cell-dn { background: #f4bcbc; }
+  tr.wl-light  td.name { background: #e2f2ff; }
+  tr.wl-medium td.name { background: #fff6df; }
+  tr.wl-heavy  td.name { background: #ffe3e3; }
+  tr.wl-light  { background: #f2fbff; }
+  tr.wl-medium { background: #fffdf5; }
+  tr.wl-heavy  { background: #fff5f5; }
+
+  .fields { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 10px; }
+  select.axis { font-family: Verdana; font-size: 10px; border: 1px solid #000; }
+  svg.pareto { background: #fff; border: 1px solid #000; display: block; max-width: 100%; }
+  .note { font-size: 10px; color: #333; margin: 3px 0; }
+  .count { font-weight: bold; }
+  .legend { font-size: 10px; margin: 2px 0; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border: 1px solid #000; vertical-align: middle; margin: 0 2px 0 8px; }
+</style>
+</head>
+<body>
+<h1>Mario Kart 8 Deluxe &mdash; Stats Calculator</h1>
+<p class="sub">Build stats from Driver + Body + Tires + Glider. Displayed stat = (sum of the four parts' points + 3) &divide; 4. Data from the Super Mario Wiki. Enumeration runs over unique stat-group combinations.</p>
+
+<!-- BUILDER + FINDER -->
+<div class="panel">
+  <div class="titlebar">Builder &amp; Find Better Builds</div>
+  <div class="body">
+    <div class="toggle">
+      Picker mode:
+      <label><input type="radio" name="mode" value="group" checked> Groups</label>
+      <label><input type="radio" name="mode" value="indiv"> Individuals</label>
+    </div>
+    <div class="row">
+      <div class="col">
+        <label class="hd">Driver</label>
+        <select class="picker" id="pk-driver" size="10"></select>
+        <div class="members" id="mem-driver"></div>
+      </div>
+      <div class="col">
+        <label class="hd">Body</label>
+        <select class="picker" id="pk-body" size="10"></select>
+        <div class="members" id="mem-body"></div>
+      </div>
+      <div class="col">
+        <label class="hd">Tires</label>
+        <select class="picker" id="pk-tire" size="10"></select>
+        <div class="members" id="mem-tire"></div>
+      </div>
+      <div class="col">
+        <label class="hd">Glider</label>
+        <select class="picker" id="pk-glider" size="10"></select>
+        <div class="members" id="mem-glider"></div>
+      </div>
+    </div>
+
+    <div class="sephead">Current build stats</div>
+    <div class="legend">
+      Terrain fills:
+      <span class="swatch" style="background:#f4c020"></span>Ground
+      <span class="swatch" style="background:#3b8ed8"></span>Water
+      <span class="swatch" style="background:#46b846"></span>Anti-Gravity
+      <span class="swatch" style="background:#f0f0f0"></span>Air
+    </div>
+    <div class="meters">
+      <div class="metercol" id="meters-core"></div>
+      <div class="metercol" id="meters-terr"></div>
+    </div>
+
+    <div class="sephead">Find better builds (live &mdash; base is the build above)</div>
+    <div class="opts">
+      <label><input type="checkbox" id="trueup"> True upgrades only (never worse in any stat)</label>
+      &nbsp;|&nbsp; Per-stat condition vs base:
+      <span id="cond-mount"></span>
+    </div>
+    <div class="note">Matching builds: <span class="count" id="finder-count">0</span> (group-based combos; showing up to 300). Cells coloured <span class="cell-up">green</span> = higher than base, <span class="cell-dn">red</span> = lower. Rows shaded by weight class.</div>
+    <div class="tablewrap">
+      <table class="data" id="finder-table"></table>
+    </div>
+  </div>
+</div>
+
+<!-- PARETO -->
+<div class="panel">
+  <div class="titlebar">Pareto Frontier</div>
+  <div class="body">
+    <div class="fields">
+      X axis (higher = better):
+      <select class="axis" id="ax-x"></select>
+      &nbsp; Y axis:
+      <select class="axis" id="ax-y"></select>
+      &nbsp; <span class="note">Frontier combos: <span class="count" id="pareto-count">0</span> &nbsp;|&nbsp; total combos: <span class="count" id="combo-count">0</span></span>
+    </div>
+    <div class="row">
+      <div style="flex:0 0 auto">
+        <svg class="pareto" id="pareto-svg" width="440" height="360"></svg>
+      </div>
+      <div class="col" style="min-width:280px">
+        <div class="tablewrap" style="max-height:360px">
+          <table class="data" id="pareto-table"></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- REFERENCE -->
+<div class="panel">
+  <div class="titlebar">Reference tables (stat groups)</div>
+  <div class="body">
+    <div class="sephead">Drivers</div>
+    <div class="tablewrap"><table class="data" id="ref-driver"></table></div>
+    <div class="sephead">Bodies</div>
+    <div class="tablewrap"><table class="data" id="ref-body"></table></div>
+    <div class="sephead">Tires</div>
+    <div class="tablewrap"><table class="data" id="ref-tire"></table></div>
+    <div class="sephead">Gliders</div>
+    <div class="tablewrap"><table class="data" id="ref-glider"></table></div>
+  </div>
+</div>
+
+<script>
+/* ---------- DATA (points, in-game format, from Super Mario Wiki) ---------- */
+/* stat vector order: [SL,SW,SA,SG, AC, WG, TL,TW,TA,TG, OF, MT, IV] */
+const DATA={
+drivers:[
+{m:["Baby Peach", "Baby Daisy"],s:[1,1,1,1,4,0,10,10,10,10,5,5,6],g:"Small"},
+{m:["Baby Rosalina", "Lemmy"],s:[1,1,1,1,5,0,9,9,9,9,3,5,6],g:"Small"},
+{m:["Baby Mario", "Baby Luigi", "Dry Bones", "Mii"],s:[2,2,2,2,5,1,8,8,8,8,4,5,5],g:"Small"},
+{m:["Koopa Troopa", "Lakitu", "Bowser Jr."],s:[3,3,3,3,4,2,8,8,8,8,5,4,4],g:"Small"},
+{m:["Toadette", "Wendy", "Isabelle"],s:[3,3,3,3,5,2,7,7,7,7,2,4,3],g:"Small"},
+{m:["Toad", "Shy Guy", "Larry"],s:[4,4,4,4,4,3,7,7,7,7,4,4,3],g:"Small"},
+{m:["Cat Peach", "Inkling Girl", "Villager (F)", "Diddy Kong"],s:[5,5,5,5,4,3,6,6,6,6,3,4,3],g:"Medium"},
+{m:["Peach", "Daisy", "Yoshi", "Birdo", "Peachette"],s:[6,6,6,6,3,4,5,5,5,5,3,4,1],g:"Medium"},
+{m:["Tanooki Mario", "Inkling Boy", "Villager (M)"],s:[6,6,6,6,3,5,5,5,5,5,1,4,1],g:"Medium"},
+{m:["Mario", "Ludwig", "Mii (Medium)"],s:[7,7,7,7,2,6,4,4,4,4,2,3,3],g:"Medium"},
+{m:["Luigi", "Iggy", "Kamek"],s:[7,7,7,7,2,6,5,5,5,5,1,3,3],g:"Medium"},
+{m:["Metal Mario", "Gold Mario", "Pink Gold Peach"],s:[8,8,8,8,1,10,3,3,3,3,1,1,3],g:"Medium"},
+{m:["Wiggler"],s:[9,9,9,9,1,8,2,2,2,2,0,1,4],g:"Medium"},
+{m:["Rosalina", "King Boo", "Link", "Champion's Tunic Link", "Pauline"],s:[8,8,8,8,1,7,3,3,3,3,3,2,4],g:"Large"},
+{m:["Petey Piranha"],s:[8,8,8,8,1,10,3,3,3,3,1,1,6],g:"Large"},
+{m:["Waluigi", "Donkey Kong", "Roy"],s:[9,9,9,9,1,8,2,2,2,2,0,1,4],g:"Large"},
+{m:["Wario", "Dry Bowser", "Funky Kong", "Mii (Heavy)"],s:[10,10,10,10,0,9,1,1,1,1,1,0,5],g:"Large"},
+{m:["Bowser", "Morton"],s:[10,10,10,10,0,10,0,0,0,0,0,0,6],g:"Large"}
+],
+bodies:[
+{m:["Biddybuggy"],s:[0,1,1,2,7,0,5,4,4,5,4,7,0],t:"Kart"},
+{m:["Mr. Scooty"],s:[0,1,1,2,7,0,5,4,4,5,4,7,0],t:"Standard Bike"},
+{m:["Streetle"],s:[2,5,2,0,6,0,4,5,3,2,6,6,3],t:"Kart"},
+{m:["Landship"],s:[2,5,2,0,6,0,4,5,3,2,6,6,2],t:"Kart"},
+{m:["Pipe Frame"],s:[2,3,1,1,6,1,5,4,2,4,4,6,3],t:"Kart"},
+{m:["Varmint", "City Tripper"],s:[2,3,1,1,6,1,5,4,2,4,4,6,2],t:"Standard Bike"},
+{m:["Cat Cruiser"],s:[2,2,4,3,5,2,4,2,4,3,3,6,3],t:"Kart"},
+{m:["Comet"],s:[2,2,4,3,5,2,4,2,4,3,3,6,3],t:"Sport Bike"},
+{m:["Yoshi Bike"],s:[2,2,4,3,5,2,4,2,4,3,3,6,2],t:"Sport Bike"},
+{m:["Teddy Buggy"],s:[2,2,4,3,5,2,4,2,4,3,3,6,1],t:"ATV"},
+{m:["W 25 Silver Arrow"],s:[2,2,3,4,5,1,4,3,3,4,5,5,4],t:"Kart"},
+{m:["Wild Wiggler"],s:[2,2,3,4,5,1,4,3,3,4,5,5,4],t:"ATV"},
+{m:["Standard Bike", "Flame Rider"],s:[2,2,3,4,5,1,4,3,3,4,5,5,4],t:"Standard Bike"},
+{m:["Mach 8", "Sports Coupe"],s:[3,3,4,5,3,3,2,2,2,4,4,5,3],t:"Kart"},
+{m:["Inkstriker"],s:[3,3,4,5,3,3,2,2,2,4,4,5,1],t:"ATV"},
+{m:["Tanooki Kart"],s:[3,4,3,3,2,3,4,4,3,3,7,5,4],t:"Kart"},
+{m:["Koopa Clown"],s:[3,4,3,3,2,3,4,4,3,3,7,5,3],t:"Kart"},
+{m:["Master Cycle Zero"],s:[3,4,3,3,2,3,4,4,3,3,7,5,3],t:"Standard Bike"},
+{m:["300 SL Roadster"],s:[3,3,3,3,4,2,3,2,3,3,3,5,4],t:"Kart"},
+{m:["Standard Kart"],s:[3,3,3,3,4,2,3,2,3,3,3,5,3],t:"Kart"},
+{m:["The Duke"],s:[3,3,3,3,4,2,3,2,3,3,3,5,3],t:"Standard Bike"},
+{m:["Blue Falcon"],s:[4,2,3,4,3,0,2,3,1,5,3,4,4],t:"Kart"},
+{m:["Splat Buggy"],s:[4,2,3,4,3,0,2,3,1,5,3,4,3],t:"ATV"},
+{m:["Prancer"],s:[4,3,3,3,2,1,3,3,3,2,2,4,5],t:"Kart"},
+{m:["Sport Bike", "Jet Bike"],s:[4,3,3,3,2,1,3,3,3,2,2,4,3],t:"Sport Bike"},
+{m:["Sneeker"],s:[4,2,3,3,2,2,3,2,2,3,0,4,5],t:"Kart"},
+{m:["Gold Standard"],s:[4,2,3,3,2,2,3,2,2,3,0,4,4],t:"Kart"},
+{m:["Master Cycle"],s:[4,2,3,3,2,2,3,2,2,3,0,4,3],t:"Sport Bike"},
+{m:["Steel Driver", "Tri-Speeder"],s:[4,5,0,2,1,4,1,5,1,1,3,3,6],t:"Kart"},
+{m:["Bone Rattler"],s:[4,5,0,2,1,4,1,5,1,1,3,3,5],t:"ATV"},
+{m:["Circuit Special", "B Dasher", "P-Wing"],s:[5,1,2,4,1,3,1,1,0,2,1,3,6],t:"Kart"},
+{m:["Badwagon", "GLA"],s:[5,2,1,3,0,4,0,1,0,1,5,3,7],t:"Kart"},
+{m:["Standard ATV"],s:[5,2,1,3,0,4,0,1,0,1,5,3,6],t:"ATV"}
+],
+tires:[
+{m:["Roller", "Azure Roller"],s:[0,3,3,0,6,0,4,4,4,4,4,6,0]},
+{m:["Button", "Leaf Tires"],s:[1,2,2,2,5,0,3,3,2,4,3,5,3]},
+{m:["Cushion"],s:[1,1,4,1,4,1,2,1,3,2,6,5,6]},
+{m:["Sponge"],s:[1,1,4,1,4,1,2,1,3,2,6,5,4]},
+{m:["GLA Tires"],s:[2,3,3,2,4,2,3,3,3,3,5,4,5]},
+{m:["Standard", "Blue Standard"],s:[2,3,3,2,4,2,3,3,3,3,5,4,4]},
+{m:["Slim", "Crimson Slim", "Wood"],s:[3,2,2,4,2,2,4,4,4,3,1,3,5]},
+{m:["Monster", "Hot Monster"],s:[3,2,1,2,2,4,0,1,1,0,7,3,6]},
+{m:["Ancient Tires"],s:[3,2,1,2,2,4,0,1,1,0,7,3,5]},
+{m:["Off-Road", "Retro Off-Road", "Triforce Tires"],s:[3,4,1,2,3,3,1,1,2,2,6,3,6]},
+{m:["Slick", "Cyber Slick"],s:[4,0,0,4,1,3,2,0,1,2,0,2,5]},
+{m:["Metal"],s:[4,3,2,1,0,4,2,2,0,1,2,2,6]},
+{m:["Gold Tires"],s:[4,3,2,1,0,4,2,2,0,1,2,2,5]}
+],
+gliders:[
+{m:["Cloud Glider", "Parachute", "Flower Glider", "Paper Glider"],s:[0,1,1,1,2,0,1,0,2,1,1,2,0]},
+{m:["Peach Parasol", "Parafoil", "Bowser Kite", "MKTV Parafoil"],s:[0,0,1,1,2,1,1,1,2,0,0,2,0]},
+{m:["Wario Wing", "Plane Glider", "Gold Glider", "Paraglider"],s:[1,0,2,1,1,2,1,1,1,0,0,1,1]},
+{m:["Super Glider", "Waddle Wing", "Hylian Kite"],s:[1,1,2,0,1,1,1,0,1,1,1,1,1]}
+]
+};
+
+/* ---------- stat metadata ---------- */
+const STAT = [
+  {name:"Ground Speed",         abbr:"SL", color:"#f4c020"},
+  {name:"Water Speed",          abbr:"SW", color:"#3b8ed8"},
+  {name:"Anti-Gravity Speed",   abbr:"SA", color:"#46b846"},
+  {name:"Air Speed",            abbr:"SG", color:"#f0f0f0"},
+  {name:"Acceleration",         abbr:"AC", color:"#e8802a"},
+  {name:"Weight",               abbr:"WG", color:"#9b7fc4"},
+  {name:"Ground Handling",      abbr:"TL", color:"#f4c020"},
+  {name:"Water Handling",       abbr:"TW", color:"#3b8ed8"},
+  {name:"Anti-Gravity Handling",abbr:"TA", color:"#46b846"},
+  {name:"Air Handling",         abbr:"TG", color:"#f0f0f0"},
+  {name:"Traction",             abbr:"OF", color:"#d95c5c"},
+  {name:"Mini-Turbo",           abbr:"MT", color:"#4bbfae"},
+  {name:"Invincibility",        abbr:"IV", color:"#b0b0b0"}
+];
+const NST = 13;
+const CORE = [0,4,5,6,10,11];         // ground speed, accel, weight, ground handling, traction, mini-turbo
+const TERR = [1,2,3,7,8,9];           // water/anti-grav/air speed, water/anti-grav/air handling
+const IVI  = 12;
+const TABLE_ORDER = CORE.concat(TERR).concat([IVI]);  // core first, then terrain, then hidden IV
+
+const disp = sum => (sum + 3) / 4;
+const fmt  = sum => disp(sum).toFixed(2);
+
+/* ---------- build unique stat groups per component (for enumeration) ---------- */
+function uniqueGroups(list){
+  const map = new Map();
+  for(const g of list){
+    const key = g.s.join(',');
+    if(map.has(key)){
+      map.get(key).m = map.get(key).m.concat(g.m);
+    } else {
+      map.set(key, {m: g.m.slice(), s: g.s, rep: g.m[0]});
+    }
+  }
+  return [...map.values()];
+}
+const UD = uniqueGroups(DATA.drivers);
+const UB = uniqueGroups(DATA.bodies);
+const UT = uniqueGroups(DATA.tires);
+const UG = uniqueGroups(DATA.gliders);
+
+/* ---------- enumerate unique combined stat vectors ---------- */
+const COMBOS = (function(){
+  const map = new Map();
+  for(let di=0; di<UD.length; di++){
+    const d = UD[di].s;
+    for(let bi=0; bi<UB.length; bi++){
+      const b = UB[bi].s;
+      for(let ti=0; ti<UT.length; ti++){
+        const t = UT[ti].s;
+        for(let gi=0; gi<UG.length; gi++){
+          const gl = UG[gi].s;
+          const v = new Array(NST);
+          for(let k=0;k<NST;k++) v[k] = d[k]+b[k]+t[k]+gl[k];
+          const key = v.join(',');
+          if(!map.has(key)) map.set(key, {s:v, di, bi, ti, gi});
+        }
+      }
+    }
+  }
+  return [...map.values()];
+})();
+
+/* ---------- picker state ---------- */
+const sel = {driver:0, body:0, tire:0, glider:0};
+let pickMode = 'group';
+
+/* option lists: for group mode use raw DATA groups; for indiv, flatten members */
+function optionList(cat){
+  const list = DATA[cat];
+  if(pickMode === 'group'){
+    return list.map((g,i) => ({label: g.m.join(', ') + (g.t?'  ['+g.t+']':''), s:g.s, g:g.g, ref:i}));
+  } else {
+    const out = [];
+    list.forEach(g => {
+      g.m.forEach(name => out.push({label: name + (g.t?'  ['+g.t+']':''), s:g.s, g:g.g}));
+    });
+    return out;
+  }
+}
+
+function currentVector(){
+  const v = new Array(NST).fill(0);
+  const parts = [
+    optCache.driver[sel.driver],
+    optCache.body[sel.body],
+    optCache.tire[sel.tire],
+    optCache.glider[sel.glider]
+  ];
+  for(const p of parts){ for(let k=0;k<NST;k++) v[k]+=p.s[k]; }
+  return v;
+}
+
+let optCache = {};
+function buildPickers(){
+  ['driver','body','tire','glider'].forEach(cat=>{
+    const key = cat==='body'?'bodies':(cat==='tire'?'tires':(cat==='glider'?'gliders':'drivers'));
+    optCache[cat] = optionList(key);
+    if(sel[cat] >= optCache[cat].length) sel[cat]=0;
+    const el = document.getElementById('pk-'+cat);
+    el.innerHTML='';
+    optCache[cat].forEach((o,i)=>{
+      const op = document.createElement('option');
+      op.value=i; op.textContent=o.label;
+      if(o.g) op.className = 'grp-'+o.g.toLowerCase();
+      if(i===sel[cat]) op.selected=true;
+      el.appendChild(op);
+    });
+  });
+}
+
+/* ---------- meters ---------- */
+function makeMeter(container, idx){
+  const row = document.createElement('div'); row.className='meter';
+  const lab = document.createElement('div'); lab.className='mlabel'; lab.textContent=STAT[idx].name;
+  const cv = document.createElement('canvas'); cv.width=150; cv.height=13;
+  const val = document.createElement('div'); val.className='mval'; val.id='mval-'+idx;
+  row.appendChild(lab); row.appendChild(cv); row.appendChild(val);
+  container.appendChild(row);
+  return cv;
+}
+const meterCanvas = {};
+function initMeters(){
+  const core = document.getElementById('meters-core');
+  const terr = document.getElementById('meters-terr');
+  CORE.concat([IVI]).forEach(i=> meterCanvas[i]=makeMeter(core,i));
+  TERR.forEach(i=> meterCanvas[i]=makeMeter(terr,i));
+}
+function drawMeter(idx, sum){
+  const cv = meterCanvas[idx], ctx = cv.getContext('2d');
+  const W=cv.width, H=cv.height, MAX=6;
+  ctx.clearRect(0,0,W,H);
+  // track
+  ctx.fillStyle='#888'; ctx.fillRect(0,0,W,H);
+  // fill
+  const v = disp(sum);
+  ctx.fillStyle = STAT[idx].color;
+  ctx.fillRect(0,0, Math.max(0,Math.min(1,v/MAX))*W, H);
+  // segment ticks each 1.0
+  ctx.strokeStyle='#000'; ctx.lineWidth=1;
+  for(let s=1;s<MAX;s++){
+    const x=Math.round(s/MAX*W)+0.5;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+  }
+  // border
+  ctx.strokeStyle='#000';
+  ctx.strokeRect(0.5,0.5,W-1,H-1);
+  document.getElementById('mval-'+idx).textContent = fmt(sum);
+}
+
+/* ---------- finder ---------- */
+const CONDS = ['n/a','<','≤','=','≥','>'];
+function buildConditionRows(){
+  const mount = document.getElementById('cond-mount');
+  const tbl = document.createElement('table'); tbl.className='cond';
+  TABLE_ORDER.forEach((idx,pos)=>{
+    if(pos===CORE.length){
+      const sr = document.createElement('tr'); sr.className='sep';
+      sr.innerHTML='<td colspan="2"></td>'; tbl.appendChild(sr);
+    }
+    const tr = document.createElement('tr');
+    const td1 = document.createElement('td'); td1.textContent = STAT[idx].name + (idx===IVI?' (hidden)':'');
+    const td2 = document.createElement('td'); td2.className='radios';
+    ['<','≤','=','≥','>','n/a'].forEach(sym=>{
+      const lab=document.createElement('label');
+      const rb=document.createElement('input'); rb.type='radio'; rb.name='cond-'+idx; rb.value=sym;
+      if(sym==='n/a') rb.checked=true;
+      rb.addEventListener('change', runFinder);
+      lab.appendChild(rb); lab.appendChild(document.createTextNode(sym));
+      td2.appendChild(lab);
+    });
+    tr.appendChild(td1); tr.appendChild(td2); tbl.appendChild(tr);
+  });
+  mount.appendChild(tbl);
+}
+function getCond(idx){
+  const r = document.querySelector('input[name="cond-'+idx+'"]:checked');
+  return r? r.value : 'n/a';
+}
+function condOk(sym, cand, base){
+  switch(sym){
+    case '<': return cand <  base;
+    case '≤': return cand <= base;
+    case '=': return cand === base;
+    case '≥': return cand >= base;
+    case '>': return cand >  base;
+    default: return true;
+  }
+}
+function weightClass(sum){
+  const v = disp(sum);
+  if(v < 2.75) return 'light';
+  if(v < 4.25) return 'medium';
+  return 'heavy';
+}
+function runFinder(){
+  const base = currentVector();
+  const trueUp = document.getElementById('trueup').checked;
+  const conds = TABLE_ORDER.map(i=>[i,getCond(i)]);
+  const results = [];
+  for(const c of COMBOS){
+    const v = c.s;
+    // per-stat conditions
+    let ok=true;
+    for(const [i,sym] of conds){ if(sym!=='n/a' && !condOk(sym, v[i], base[i])){ ok=false; break; } }
+    if(!ok) continue;
+    if(trueUp){
+      let worse=false, better=false;
+      for(let k=0;k<NST;k++){ if(v[k]<base[k]){worse=true;break;} if(v[k]>base[k]) better=true; }
+      if(worse||!better) continue;
+    }
+    // exclude identical to base
+    let same=true; for(let k=0;k<NST;k++){ if(v[k]!==base[k]){same=false;break;} }
+    if(same) continue;
+    // score: number of improved stats then total delta
+    let imp=0, tot=0;
+    for(let k=0;k<NST;k++){ const d=v[k]-base[k]; if(d>0)imp++; tot+=d; }
+    results.push({c, imp, tot});
+  }
+  results.sort((a,b)=> b.imp-a.imp || b.tot-a.tot);
+  document.getElementById('finder-count').textContent = results.length;
+  renderFinderTable(results.slice(0,300), base);
+}
+function nameFor(c){
+  return UD[c.di].rep + ' + ' + UB[c.bi].rep + ' + ' + UT[c.ti].rep + ' + ' + UG[c.gi].rep;
+}
+function renderFinderTable(rows, base){
+  const t = document.getElementById('finder-table');
+  let h = '<thead><tr><th class="name">Build (representative)</th>';
+  TABLE_ORDER.forEach((idx,pos)=>{
+    if(pos===CORE.length) h+='<th class="sepcol"></th>';
+    h+='<th title="'+STAT[idx].name+'">'+STAT[idx].abbr+'</th>';
+  });
+  h+='</tr></thead><tbody>';
+  h+='<tr class="wl-'+weightClass(base[5])+'"><td class="name"><b>BASE build</b></td>';
+  TABLE_ORDER.forEach((idx,pos)=>{
+    if(pos===CORE.length) h+='<td class="sepcol"></td>';
+    h+='<td>'+fmt(base[idx])+'</td>';
+  });
+  h+='</tr>';
+  for(const r of rows){
+    const v=r.c.s;
+    h+='<tr class="wl-'+weightClass(v[5])+'"><td class="name">'+nameFor(r.c)+'</td>';
+    TABLE_ORDER.forEach((idx,pos)=>{
+      if(pos===CORE.length) h+='<td class="sepcol"></td>';
+      const cls = v[idx]>base[idx]?'cell-up':(v[idx]<base[idx]?'cell-dn':'');
+      h+='<td class="'+cls+'">'+fmt(v[idx])+'</td>';
+    });
+    h+='</tr>';
+  }
+  h+='</tbody>';
+  t.innerHTML=h;
+}
+
+/* ---------- pareto ---------- */
+function buildAxisSelectors(){
+  ['ax-x','ax-y'].forEach(id=>{
+    const el=document.getElementById(id);
+    STAT.forEach((s,i)=>{
+      const o=document.createElement('option'); o.value=i; o.textContent=s.name; el.appendChild(o);
+    });
+  });
+  document.getElementById('ax-x').value=0;   // Ground Speed
+  document.getElementById('ax-y').value=11;  // Mini-Turbo
+  document.getElementById('ax-x').addEventListener('change', runPareto);
+  document.getElementById('ax-y').addEventListener('change', runPareto);
+}
+function runPareto(){
+  const xi=+document.getElementById('ax-x').value;
+  const yi=+document.getElementById('ax-y').value;
+  document.getElementById('combo-count').textContent = COMBOS.length;
+  // aggregate to unique (x,y) points, keep a representative combo (max sum of the two)
+  const pts = new Map();
+  for(const c of COMBOS){
+    const x=c.s[xi], y=c.s[yi], key=x+','+y;
+    const cur = pts.get(key);
+    if(!cur || (c.s[xi]+c.s[yi]) > (cur.c.s[xi]+cur.c.s[yi])) pts.set(key,{x,y,c});
+  }
+  const P=[...pts.values()];
+  // pareto frontier: not dominated (higher-or-equal on both, strictly higher on at least one)
+  P.forEach(p=>{
+    p.front = !P.some(q => q!==p && q.x>=p.x && q.y>=p.y && (q.x>p.x||q.y>p.y));
+  });
+  const front = P.filter(p=>p.front).sort((a,b)=> a.x-b.x || b.y-a.y);
+  document.getElementById('pareto-count').textContent = front.length;
+  drawPareto(P, front, xi, yi);
+  renderParetoTable(front, xi, yi);
+}
+function drawPareto(P, front, xi, yi){
+  const svg=document.getElementById('pareto-svg');
+  const W=440,H=360, pad=40;
+  const xs=P.map(p=>p.x), ys=P.map(p=>p.y);
+  const xmin=Math.min(...xs), xmax=Math.max(...xs);
+  const ymin=Math.min(...ys), ymax=Math.max(...ys);
+  const sx=v=> pad + (xmax===xmin?0.5:(v-xmin)/(xmax-xmin))*(W-pad-15);
+  const sy=v=> (H-pad) - (ymax===ymin?0.5:(v-ymin)/(ymax-ymin))*(H-pad-15);
+  let s='';
+  // axes
+  s+='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-8)+'" y2="'+(H-pad)+'" stroke="#000"/>';
+  s+='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+pad+'" y2="8" stroke="#000"/>';
+  // gridlines/labels ints
+  for(let v=xmin; v<=xmax; v++){ const x=sx(v);
+    s+='<line x1="'+x+'" y1="'+(H-pad)+'" x2="'+x+'" y2="'+(H-pad+3)+'" stroke="#000"/>';
+    s+='<text x="'+x+'" y="'+(H-pad+13)+'" font-size="8" text-anchor="middle">'+fmt(v)+'</text>';
+  }
+  for(let v=ymin; v<=ymax; v++){ const y=sy(v);
+    s+='<line x1="'+(pad-3)+'" y1="'+y+'" x2="'+pad+'" y2="'+y+'" stroke="#000"/>';
+    s+='<text x="'+(pad-5)+'" y="'+(y+3)+'" font-size="8" text-anchor="end">'+fmt(v)+'</text>';
+  }
+  // all points
+  P.forEach(p=>{ if(!p.front) s+='<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="2.2" fill="#666"/>'; });
+  // frontier line
+  let line='';
+  front.forEach((p,i)=>{ line += (i?' L':'M')+sx(p.x)+' '+sy(p.y); });
+  s+='<path d="'+line+'" fill="none" stroke="#c00000" stroke-width="1.5"/>';
+  front.forEach(p=>{ s+='<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="3.4" fill="#c00000" stroke="#000"/>'; });
+  // axis titles
+  s+='<text x="'+((W)/2)+'" y="'+(H-4)+'" font-size="9" text-anchor="middle" font-weight="bold">'+STAT[xi].name+'</text>';
+  s+='<text x="12" y="'+(H/2)+'" font-size="9" text-anchor="middle" font-weight="bold" transform="rotate(-90 12 '+(H/2)+')">'+STAT[yi].name+'</text>';
+  svg.innerHTML=s;
+}
+function renderParetoTable(front, xi, yi){
+  const t=document.getElementById('pareto-table');
+  let h='<thead><tr><th class="name">Frontier build</th><th title="'+STAT[xi].name+'">'+STAT[xi].abbr+'</th><th title="'+STAT[yi].name+'">'+STAT[yi].abbr+'</th></tr></thead><tbody>';
+  front.slice().sort((a,b)=> b.x-a.x || b.y-a.y).forEach(p=>{
+    h+='<tr class="wl-'+weightClass(p.c.s[5])+'"><td class="name">'+nameFor(p.c)+'</td><td>'+fmt(p.x)+'</td><td>'+fmt(p.y)+'</td></tr>';
+  });
+  h+='</tbody>';
+  t.innerHTML=h;
+}
+
+/* ---------- reference tables ---------- */
+function renderRef(id, list, isDriver){
+  const t=document.getElementById(id);
+  let h='<thead><tr><th class="name">Group members</th>';
+  if(isDriver) h+='<th>Class</th>';
+  if(list[0] && list[0].t!==undefined) h+='<th>Type</th>';
+  TABLE_ORDER.forEach((idx,pos)=>{
+    if(pos===CORE.length) h+='<th class="sepcol"></th>';
+    h+='<th title="'+STAT[idx].name+'">'+STAT[idx].abbr+'</th>';
+  });
+  h+='</tr></thead><tbody>';
+  list.forEach(g=>{
+    const wl = isDriver ? (g.g==='Small'?'light':g.g==='Large'?'heavy':'medium') : weightClass(g.s[5]*4-3<0?0:g.s[5]);
+    h+='<tr class="wl-'+wl+'"><td class="name">'+g.m.join(', ')+'</td>';
+    if(isDriver) h+='<td>'+g.g+'</td>';
+    if(g.t!==undefined) h+='<td>'+g.t+'</td>';
+    TABLE_ORDER.forEach((idx,pos)=>{
+      if(pos===CORE.length) h+='<td class="sepcol"></td>';
+      h+='<td>'+g.s[idx]+'</td>';
+    });
+    h+='</tr>';
+  });
+  h+='</tbody>';
+  t.innerHTML=h;
+}
+
+/* ---------- refresh ---------- */
+function refreshBuild(){
+  const v = currentVector();
+  TABLE_ORDER.forEach(i=>drawMeter(i, v[i]));
+  // members panels
+  document.getElementById('mem-driver').innerHTML='<b>Selected:</b> '+optCache.driver[sel.driver].label;
+  document.getElementById('mem-body').innerHTML='<b>Selected:</b> '+optCache.body[sel.body].label;
+  document.getElementById('mem-tire').innerHTML='<b>Selected:</b> '+optCache.tire[sel.tire].label;
+  document.getElementById('mem-glider').innerHTML='<b>Selected:</b> '+optCache.glider[sel.glider].label;
+  runFinder();
+}
+
+/* ---------- wire up ---------- */
+function wirePickers(){
+  const map={driver:'pk-driver', body:'pk-body', tire:'pk-tire', glider:'pk-glider'};
+  Object.keys(map).forEach(cat=>{
+    document.getElementById(map[cat]).addEventListener('change', e=>{
+      sel[cat]=+e.target.value; refreshBuild();
+    });
+  });
+  document.querySelectorAll('input[name="mode"]').forEach(r=>{
+    r.addEventListener('change', e=>{
+      pickMode=e.target.value;
+      sel.driver=0; sel.body=0; sel.tire=0; sel.glider=0;
+      buildPickers(); refreshBuild();
+    });
+  });
+  document.getElementById('trueup').addEventListener('change', runFinder);
+}
+
+/* ---------- init ---------- */
+initMeters();
+buildPickers();
+buildConditionRows();
+buildAxisSelectors();
+wirePickers();
+// pick a fun default build: Peach/Yoshi + Standard Bike + Roller + Super Glider style
+sel.driver = 7; // Peach group (Medium)
+refreshBuild();
+runPareto();
+renderRef('ref-driver', DATA.drivers, true);
+renderRef('ref-body', DATA.bodies, false);
+renderRef('ref-tire', DATA.tires, false);
+renderRef('ref-glider', DATA.gliders, false);
+</script>
+</body>
+</html>
