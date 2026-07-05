@@ -98,6 +98,21 @@
   tr.wl-medium { background: #fffdf5; }
   tr.wl-heavy  { background: #fff5f5; }
 
+  /* group chips + popover */
+  .chip {
+    display: inline-block; padding: 0 3px; margin: 1px 3px 1px 0;
+    background: #e4e4e4; border: 1px solid #999; font-size: 10px; white-space: nowrap;
+  }
+  .chip.grp { cursor: pointer; border-bottom: 2px dotted #444; }
+  .chip.grp:hover { background: #fff6c0; }
+  .chip .cnt { color: #c00000; font-weight: bold; font-size: 8px; vertical-align: super; margin-left: 1px; }
+  .pop {
+    position: absolute; display: none; z-index: 200;
+    background: #ffffdd; border: 1px solid #000; padding: 4px 7px; font-size: 10px;
+    max-width: 240px; box-shadow: 2px 2px 4px rgba(0,0,0,.45);
+  }
+  .pop b { display: block; border-bottom: 1px solid #000; margin-bottom: 3px; padding-bottom: 1px; }
+
   .fields { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 10px; }
   select.axis { font-family: Verdana; font-size: 10px; border: 1px solid #000; }
   svg.pareto { background: #fff; border: 1px solid #000; display: block; max-width: 100%; }
@@ -115,11 +130,7 @@
 <div class="panel">
   <div class="titlebar">Builder &amp; Find Better Builds</div>
   <div class="body">
-    <div class="toggle">
-      Picker mode:
-      <label><input type="radio" name="mode" value="group" checked> Groups</label>
-      <label><input type="radio" name="mode" value="indiv"> Individuals</label>
-    </div>
+    <div class="toggle">Pick any individual part below. Parts that share an identical stat line are noted under each picker; the Finder and Pareto results group them into chips &mdash; hover or click a chip to see every member.</div>
     <div class="row">
       <div class="col">
         <label class="hd">Driver</label>
@@ -357,20 +368,18 @@ const COMBOS = (function(){
 
 /* ---------- picker state ---------- */
 const sel = {driver:0, body:0, tire:0, glider:0};
-let pickMode = 'group';
+const GROUPS = {driver:UD, body:UB, tire:UT, glider:UG};
+const CATLABEL = {driver:'Driver', body:'Body', tire:'Tire', glider:'Glider'};
 
-/* option lists: for group mode use raw DATA groups; for indiv, flatten members */
-function optionList(cat){
-  const list = DATA[cat];
-  if(pickMode === 'group'){
-    return list.map((g,i) => ({label: g.m.join(', ') + (g.t?'  ['+g.t+']':''), s:g.s, g:g.g, ref:i}));
-  } else {
-    const out = [];
-    list.forEach(g => {
-      g.m.forEach(name => out.push({label: name + (g.t?'  ['+g.t+']':''), s:g.s, g:g.g}));
-    });
-    return out;
-  }
+/* Builder lists every individual part. Each option carries its unique stat group
+   (index gi into GROUPS[cat]) so equivalent members are known. */
+function individualList(cat){
+  const arr = GROUPS[cat];
+  const out = [];
+  arr.forEach((g,gi)=>{
+    g.m.forEach(name => out.push({label:name, s:g.s, gi, groupMembers:g.m, cls:g.g}));
+  });
+  return out;
 }
 
 function currentVector(){
@@ -388,15 +397,14 @@ function currentVector(){
 let optCache = {};
 function buildPickers(){
   ['driver','body','tire','glider'].forEach(cat=>{
-    const key = cat==='body'?'bodies':(cat==='tire'?'tires':(cat==='glider'?'gliders':'drivers'));
-    optCache[cat] = optionList(key);
+    optCache[cat] = individualList(cat);
     if(sel[cat] >= optCache[cat].length) sel[cat]=0;
     const el = document.getElementById('pk-'+cat);
     el.innerHTML='';
     optCache[cat].forEach((o,i)=>{
       const op = document.createElement('option');
       op.value=i; op.textContent=o.label;
-      if(o.g) op.className = 'grp-'+o.g.toLowerCase();
+      if(o.cls) op.className = 'grp-'+o.cls.toLowerCase();
       if(i===sel[cat]) op.selected=true;
       el.appendChild(op);
     });
@@ -515,12 +523,37 @@ function runFinder(){
   document.getElementById('finder-count').textContent = results.length;
   renderFinderTable(results.slice(0,300), base);
 }
-function nameFor(c){
-  return UD[c.di].rep + ' + ' + UB[c.bi].rep + ' + ' + UT[c.ti].rep + ' + ' + UG[c.gi].rep;
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+function chip(cat, gi){
+  const g = GROUPS[cat][gi];
+  const n = g.m.length;
+  if(n === 1) return '<span class="chip">'+esc(g.m[0])+'</span>';
+  return '<span class="chip grp" data-cat="'+cat+'" data-gi="'+gi+'" title="'+esc(g.m.join(', '))+'">'
+       + esc(g.rep) + '<span class="cnt">+'+(n-1)+'</span></span>';
 }
+function nameFor(c){
+  return chip('driver',c.di) + chip('body',c.bi) + chip('tire',c.ti) + chip('glider',c.gi);
+}
+/* click-to-reveal popover listing group members */
+const groupPop = document.createElement('div'); groupPop.className='pop';
+document.body.appendChild(groupPop);
+document.addEventListener('click', e=>{
+  const c = e.target.closest('.chip.grp');
+  if(c){
+    const g = GROUPS[c.dataset.cat][+c.dataset.gi];
+    groupPop.innerHTML = '<b>'+CATLABEL[c.dataset.cat]+' group ('+g.m.length+')</b>' + g.m.map(esc).join('<br>');
+    const r = c.getBoundingClientRect();
+    groupPop.style.left = (r.left + window.scrollX) + 'px';
+    groupPop.style.top  = (r.bottom + window.scrollY + 2) + 'px';
+    groupPop.style.display = 'block';
+    e.stopPropagation();
+  } else if(!e.target.closest('.pop')){
+    groupPop.style.display = 'none';
+  }
+});
 function renderFinderTable(rows, base){
   const t = document.getElementById('finder-table');
-  let h = '<thead><tr><th class="name">Build (representative)</th>';
+  let h = '<thead><tr><th class="name">Build (Driver / Body / Tire / Glider groups)</th>';
   TABLE_ORDER.forEach((idx,pos)=>{
     if(pos===CORE.length) h+='<th class="sepcol"></th>';
     h+='<th title="'+STAT[idx].name+'">'+STAT[idx].abbr+'</th>';
@@ -650,14 +683,19 @@ function renderRef(id, list, isDriver){
 }
 
 /* ---------- refresh ---------- */
+function sameStatsHTML(cat){
+  const o = optCache[cat][sel[cat]];
+  const others = o.groupMembers.filter(m => m !== o.label);
+  if(!others.length) return '<b>Unique stat line</b>';
+  return '<b>Same stats:</b> ' + others.map(esc).join(', ');
+}
 function refreshBuild(){
   const v = currentVector();
   TABLE_ORDER.forEach(i=>drawMeter(i, v[i]));
-  // members panels
-  document.getElementById('mem-driver').innerHTML='<b>Selected:</b> '+optCache.driver[sel.driver].label;
-  document.getElementById('mem-body').innerHTML='<b>Selected:</b> '+optCache.body[sel.body].label;
-  document.getElementById('mem-tire').innerHTML='<b>Selected:</b> '+optCache.tire[sel.tire].label;
-  document.getElementById('mem-glider').innerHTML='<b>Selected:</b> '+optCache.glider[sel.glider].label;
+  document.getElementById('mem-driver').innerHTML = sameStatsHTML('driver');
+  document.getElementById('mem-body').innerHTML   = sameStatsHTML('body');
+  document.getElementById('mem-tire').innerHTML   = sameStatsHTML('tire');
+  document.getElementById('mem-glider').innerHTML = sameStatsHTML('glider');
   runFinder();
 }
 
@@ -669,13 +707,6 @@ function wirePickers(){
       sel[cat]=+e.target.value; refreshBuild();
     });
   });
-  document.querySelectorAll('input[name="mode"]').forEach(r=>{
-    r.addEventListener('change', e=>{
-      pickMode=e.target.value;
-      sel.driver=0; sel.body=0; sel.tire=0; sel.glider=0;
-      buildPickers(); refreshBuild();
-    });
-  });
   document.getElementById('trueup').addEventListener('change', runFinder);
 }
 
@@ -685,8 +716,16 @@ buildPickers();
 buildConditionRows();
 buildAxisSelectors();
 wirePickers();
-// pick a fun default build: Peach/Yoshi + Standard Bike + Roller + Super Glider style
-sel.driver = 7; // Peach group (Medium)
+// default build: Mario + Standard Kart + Standard tires + Super Glider
+function pickDefault(cat, name){
+  const i = optCache[cat].findIndex(o => o.label === name);
+  if(i >= 0) sel[cat] = i;
+}
+pickDefault('driver','Mario');
+pickDefault('body','Standard Kart');
+pickDefault('tire','Standard');
+pickDefault('glider','Super Glider');
+buildPickers();
 refreshBuild();
 runPareto();
 renderRef('ref-driver', DATA.drivers, true);
