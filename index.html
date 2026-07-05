@@ -120,6 +120,24 @@
   .pop b { display: block; border-bottom: 1px solid #000; margin-bottom: 3px; padding-bottom: 1px; }
 
   .fields { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 10px; }
+
+  /* optimizer */
+  .opt-btn {
+    font-family: Verdana, sans-serif; font-weight: bold; font-size: 11px;
+    padding: 3px 14px; border: 1px solid #000; background: #ffcc00; cursor: pointer;
+  }
+  .opt-btn:hover { background: #ffd633; }
+  ul.prio-list { list-style: none; margin: 4px 0; padding: 0; max-width: 340px; }
+  ul.prio-list li {
+    background: #ddd; border: 1px solid #666; padding: 2px 6px; margin: 2px 0;
+    font-size: 10px; cursor: grab; user-select: none; display: flex; align-items: center; gap: 6px;
+  }
+  ul.prio-list li.dragging { opacity: .4; }
+  ul.prio-list li .rank { display: inline-block; width: 16px; font-weight: bold; color: #444; text-align: right; }
+  ul.prio-list li .grip-dots { color: #888; letter-spacing: 1px; }
+  .opt-swatch { display: inline-block; width: 9px; height: 9px; border: 1px solid #000; }
+  .opt-result .parts { font-size: 10px; margin: 2px 0; }
+  .opt-result .parts b { display: inline-block; min-width: 52px; }
   select.axis { font-family: Verdana; font-size: 10px; border: 1px solid #000; }
   svg.pareto { background: #fff; border: 1px solid #000; display: block; max-width: 100%; }
   .note { font-size: 10px; color: #333; margin: 3px 0; }
@@ -186,16 +204,29 @@
   </div>
 </div>
 
-<!-- PARETO -->
+<!-- OPTIMIZER -->
 <div class="panel">
-  <div class="titlebar">Pareto Frontier</div>
+  <div class="titlebar">Build Optimizer</div>
   <div class="body">
     <div class="fields">
-      X axis (higher = better):
+      <b>Priority&nbsp;1 (key):</b>
       <select class="axis" id="ax-x"></select>
-      &nbsp; Y axis:
+      &nbsp; <b>Priority&nbsp;2:</b>
       <select class="axis" id="ax-y"></select>
-      &nbsp; <span class="note">Frontier: <span class="count" id="pareto-count">0</span> &nbsp;|&nbsp; total combos: <span class="count" id="combo-count">0</span></span>
+      &nbsp; <button class="opt-btn" id="opt-btn">Optimize!</button>
+    </div>
+    <div class="note">Rank the remaining stats (drag to reorder, top = higher priority). Optimize returns the build that maximises Priority&nbsp;1, breaking ties by Priority&nbsp;2, then down this list &mdash; all stats treated as higher&nbsp;=&nbsp;better.</div>
+    <ul class="prio-list" id="prio-list"></ul>
+    <div class="opt-result" id="opt-result"></div>
+  </div>
+</div>
+
+<!-- PARETO -->
+<div class="panel">
+  <div class="titlebar">Pareto Frontier (Priority 1 vs Priority 2)</div>
+  <div class="body">
+    <div class="fields">
+      <span class="note">Axes follow the optimizer's Priority 1 (X) and Priority 2 (Y). Frontier: <span class="count" id="pareto-count">0</span> &nbsp;|&nbsp; total combos: <span class="count" id="combo-count">0</span>. The gold marker is the current optimized build.</span>
     </div>
     <div class="note">Each frontier point can be reached by many builds. The table lists, per point, every distinct part group that appears in a frontier build for that slot &mdash; hover or click a chip for its members.</div>
     <div class="row">
@@ -615,8 +646,9 @@ function buildAxisSelectors(){
   });
   document.getElementById('ax-x').value=0;   // Ground Speed
   document.getElementById('ax-y').value=11;  // Mini-Turbo
-  document.getElementById('ax-x').addEventListener('change', runPareto);
-  document.getElementById('ax-y').addEventListener('change', runPareto);
+  const onAxisChange = ()=>{ syncRest(); renderPrioList(); optimalCombo=null; document.getElementById('opt-result').innerHTML=''; runPareto(); };
+  document.getElementById('ax-x').addEventListener('change', onAxisChange);
+  document.getElementById('ax-y').addEventListener('change', onAxisChange);
 }
 function runPareto(){
   const xi=+document.getElementById('ax-x').value;
@@ -681,10 +713,108 @@ function drawPareto(P, front, xi, yi, info){
   front.forEach(p=>{ const fi=info[p.x+','+p.y];
     s+='<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="3.4" fill="#c00000" stroke="#000"><title>'
       +STAT[xi].abbr+' '+fmt(p.x)+', '+STAT[yi].abbr+' '+fmt(p.y)+' — '+fi.count.toLocaleString()+' builds</title></circle>'; });
+  // optimized build marker (gold diamond)
+  if(optimalCombo){
+    const ox=sx(optimalCombo.s[xi]), oy=sy(optimalCombo.s[yi]), r=6;
+    s+='<path d="M'+ox+' '+(oy-r)+' L'+(ox+r)+' '+oy+' L'+ox+' '+(oy+r)+' L'+(ox-r)+' '+oy+' Z" '
+      +'fill="#ffcc00" stroke="#000" stroke-width="1.5"><title>Optimized build</title></path>';
+  }
   // axis titles
-  s+='<text x="'+((W)/2)+'" y="'+(H-4)+'" font-size="9" text-anchor="middle" font-weight="bold">'+STAT[xi].name+'</text>';
-  s+='<text x="12" y="'+(H/2)+'" font-size="9" text-anchor="middle" font-weight="bold" transform="rotate(-90 12 '+(H/2)+')">'+STAT[yi].name+'</text>';
+  s+='<text x="'+((W)/2)+'" y="'+(H-4)+'" font-size="9" text-anchor="middle" font-weight="bold">'+STAT[xi].name+' (Priority 1)</text>';
+  s+='<text x="12" y="'+(H/2)+'" font-size="9" text-anchor="middle" font-weight="bold" transform="rotate(-90 12 '+(H/2)+')">'+STAT[yi].name+' (Priority 2)</text>';
   svg.innerHTML=s;
+}
+
+/* ---------- optimizer ---------- */
+let optimalCombo = null;
+let restOrder = [4,6,10,5,1,2,3,7,8,9,12];  // default priorities 3+ (all stats except GS & MT)
+function axVals(){ return [+document.getElementById('ax-x').value, +document.getElementById('ax-y').value]; }
+function syncRest(){
+  const [xi,yi] = axVals();
+  const need = [];
+  for(let i=0;i<STAT.length;i++) if(i!==xi && i!==yi) need.push(i);
+  restOrder = restOrder.filter(s => need.includes(s));
+  need.forEach(s => { if(!restOrder.includes(s)) restOrder.push(s); });
+}
+function renderPrioList(){
+  const ul = document.getElementById('prio-list');
+  ul.innerHTML = restOrder.map((s,i)=>
+    '<li draggable="true" data-stat="'+s+'"><span class="rank">'+(i+3)+'.</span>'
+    +'<span class="grip-dots">⋮⋮</span>'
+    +'<span class="opt-swatch" style="background:'+STAT[s].color+'"></span>'
+    + STAT[s].name + '</li>'
+  ).join('');
+}
+function initPrioDnD(){
+  const ul = document.getElementById('prio-list');
+  let dragEl = null;
+  ul.addEventListener('dragstart', e=>{ dragEl=e.target.closest('li'); if(dragEl){ dragEl.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; } });
+  ul.addEventListener('dragend', ()=>{ if(!dragEl) return; dragEl.classList.remove('dragging'); dragEl=null;
+    restOrder = [...ul.querySelectorAll('li')].map(li=>+li.dataset.stat); renderPrioList(); });
+  ul.addEventListener('dragover', e=>{ e.preventDefault(); if(!dragEl) return;
+    const after = afterElement(ul, e.clientY);
+    if(after==null) ul.appendChild(dragEl); else ul.insertBefore(dragEl, after);
+  });
+}
+function afterElement(ul, y){
+  const els = [...ul.querySelectorAll('li:not(.dragging)')];
+  let best = {off:-Infinity, el:null};
+  for(const el of els){ const box=el.getBoundingClientRect(); const off = y - box.top - box.height/2;
+    if(off<0 && off>best.off) best={off, el}; }
+  return best.el;
+}
+function lexBetter(a, b, order){
+  for(const s of order){ if(a[s]!==b[s]) return a[s] > b[s]; }
+  return false;
+}
+function optimize(){
+  const [xi,yi] = axVals();
+  const order = [xi, yi, ...restOrder];
+  let best = COMBOS[0];
+  for(let i=1;i<COMBOS.length;i++){ if(lexBetter(COMBOS[i].s, best.s, order)) best = COMBOS[i]; }
+  optimalCombo = best;
+  renderOptResult(order);
+  runPareto();   // redraw scatter with the gold marker
+}
+/* find every group-combo that yields the exact optimal stat vector */
+function matchOptions(target){
+  const d=new Set(), b=new Set(), t=new Set(), g=new Set(); let count=0;
+  for(let di=0; di<UD.length; di++){ const A=UD[di].s;
+    for(let bi=0; bi<UB.length; bi++){ const B=UB[bi].s;
+      for(let ti=0; ti<UT.length; ti++){ const T=UT[ti].s;
+        for(let gi=0; gi<UG.length; gi++){ const G=UG[gi].s;
+          let ok=true; for(let k=0;k<NST;k++){ if(A[k]+B[k]+T[k]+G[k]!==target[k]){ ok=false; break; } }
+          if(ok){ d.add(di); b.add(bi); t.add(ti); g.add(gi); count++; }
+        }}}}
+  return {d,b,t,g,count};
+}
+function renderOptResult(order){
+  const c = optimalCombo, v = c.s;
+  const opt = matchOptions(v);
+  let h = '<div class="sephead">Optimal build</div>';
+  h += '<div class="note">Priority order: ' + order.map((s,i)=>'<b>'+(i+1)+'.</b> '+STAT[s].abbr).join(' &rsaquo; ') + '</div>';
+  // stat row
+  h += '<div class="tablewrap" style="max-height:none"><table class="data"><thead><tr>';
+  TABLE_ORDER.forEach((idx,pos)=>{ if(pos===CORE.length) h+='<th class="sepcol"></th>';
+    h+='<th title="'+STAT[idx].name+'">'+STAT[idx].abbr+'</th>'; });
+  h += '</tr></thead><tbody><tr>';
+  TABLE_ORDER.forEach((idx,pos)=>{ if(pos===CORE.length) h+='<td class="sepcol"></td>';
+    h+='<td>'+fmt(v[idx])+'</td>'; });
+  h += '</tr></tbody></table></div>';
+  // part options per slot
+  const slot=(label,cat,set)=> '<div class="parts"><b>'+label+':</b> '+[...set].sort((a,b)=>a-b).map(gi=>chip(cat,gi)).join('')+'</div>';
+  h += slot('Driver','driver',opt.d) + slot('Body','body',opt.b) + slot('Tire','tire',opt.t) + slot('Glider','glider',opt.g);
+  h += '<div class="note">'+opt.count.toLocaleString()+' part combination(s) give exactly these stats. '
+     + '<button class="opt-btn" id="opt-load" style="padding:1px 8px">Load into Builder</button></div>';
+  document.getElementById('opt-result').innerHTML = h;
+  document.getElementById('opt-load').addEventListener('click', loadOptimalIntoBuilder);
+}
+function loadOptimalIntoBuilder(){
+  const c = optimalCombo;
+  const setSel=(cat,gi)=>{ const i=optCache[cat].findIndex(o=>o.gi===gi); if(i>=0) sel[cat]=i; };
+  setSel('driver',c.di); setSel('body',c.bi); setSel('tire',c.ti); setSel('glider',c.gi);
+  buildPickers(); refreshBuild();
+  window.scrollTo({top:0, behavior:'smooth'});
 }
 function renderParetoTable(front, xi, yi, info){
   const t=document.getElementById('pareto-table');
@@ -794,6 +924,11 @@ pickDefault('tire','Standard');
 pickDefault('glider','Super Glider');
 buildPickers();
 refreshBuild();
+// optimizer
+syncRest();
+renderPrioList();
+initPrioDnD();
+document.getElementById('opt-btn').addEventListener('click', optimize);
 runPareto();
 renderRef('ref-driver', DATA.drivers, true);
 renderRef('ref-body', DATA.bodies, false);
