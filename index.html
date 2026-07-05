@@ -89,7 +89,9 @@
   }
   table.data th.sortable { cursor: pointer; user-select: none; }
   table.data th.sortable:hover { background: #555; }
-  table.data th.sorted { background: #1a6e1a; }
+  table.data th.sorted { background: #2e7d32; }
+  table.data th.sorted-primary { background: #1a6e1a; }
+  table.data th sup { font-size: 8px; }
   table.data td.name { text-align: left; white-space: normal; min-width: 150px; }
   table.data td.opts { text-align: left; white-space: normal; vertical-align: top; min-width: 120px; max-width: 300px; }
   table.data td.sepcol, table.data th.sepcol { background: #000; padding: 0 2px; min-width: 2px; }
@@ -177,7 +179,7 @@
       &nbsp;|&nbsp; Per-stat condition vs base:
       <span id="cond-mount"></span>
     </div>
-    <div class="note">Matching builds: <span class="count" id="finder-count">0</span> (group-based combos; showing up to 300). Cells coloured <span class="cell-up">green</span> = higher than base, <span class="cell-dn">red</span> = lower. Rows shaded by weight class. Click a stat header to sort (again to flip direction); default order is best upgrades first.</div>
+    <div class="note">Matching builds: <span class="count" id="finder-count">0</span> (group-based combos; showing up to 300). Cells coloured <span class="cell-up">green</span> = higher than base, <span class="cell-dn">red</span> = lower. Rows shaded by weight class. Click a stat header to sort by it; click more headers to add tiebreakers (newest = primary, numbered by priority), click the primary again to flip direction, or click the Build header to reset. Default order is best upgrades first.</div>
     <div class="tablewrap">
       <table class="data" id="finder-table"></table>
     </div>
@@ -457,7 +459,16 @@ function drawMeter(idx, sum){
 }
 
 /* ---------- finder ---------- */
-let sortStat = null, sortDir = 1;   // sortDir: 1 = descending, -1 = ascending
+/* stacked sort: sortKeys[0] is primary, later entries are tiebreakers.
+   dir: 1 = descending (higher first), -1 = ascending. */
+let sortKeys = [];
+function cmpResults(a,b){
+  for(const k of sortKeys){
+    const d = (b.c.s[k.stat] - a.c.s[k.stat]) * k.dir;
+    if(d) return d;
+  }
+  return b.imp-a.imp || b.tot-a.tot;   // default: best upgrades first
+}
 const CONDS = ['n/a','<','≤','=','≥','>'];
 function buildConditionRows(){
   const mount = document.getElementById('cond-mount');
@@ -526,11 +537,7 @@ function runFinder(){
     for(let k=0;k<NST;k++){ const d=v[k]-base[k]; if(d>0)imp++; tot+=d; }
     results.push({c, imp, tot});
   }
-  if(sortStat !== null){
-    results.sort((a,b)=> (b.c.s[sortStat]-a.c.s[sortStat])*sortDir || b.imp-a.imp || b.tot-a.tot);
-  } else {
-    results.sort((a,b)=> b.imp-a.imp || b.tot-a.tot);
-  }
+  results.sort(cmpResults);
   document.getElementById('finder-count').textContent = results.length;
   renderFinderTable(results.slice(0,300), base);
 }
@@ -564,12 +571,18 @@ document.addEventListener('click', e=>{
 });
 function renderFinderTable(rows, base){
   const t = document.getElementById('finder-table');
-  let h = '<thead><tr><th class="name">Build (Driver / Body / Tire / Glider groups)</th>';
+  const keyMap = {};
+  sortKeys.forEach((k,i)=> keyMap[k.stat] = {dir:k.dir, pri:i+1});
+  let h = '<thead><tr><th class="name" id="finder-name-th" title="Click to clear sorting">Build (Driver / Body / Tire / Glider groups)</th>';
   TABLE_ORDER.forEach((idx,pos)=>{
     if(pos===CORE.length) h+='<th class="sepcol"></th>';
-    const active = sortStat===idx;
-    const arrow = active ? (sortDir>0 ? ' ▼' : ' ▲') : '';
-    h+='<th class="sortable'+(active?' sorted':'')+'" data-sort="'+idx+'" title="Sort by '+STAT[idx].name+' ('+STAT[idx].code+')">'+STAT[idx].abbr+arrow+'</th>';
+    const km = keyMap[idx];
+    let mark = '';
+    if(km){
+      mark = (km.dir>0 ? ' ▼' : ' ▲') + (sortKeys.length>1 ? '<sup>'+km.pri+'</sup>' : '');
+    }
+    h+='<th class="sortable'+(km?(km.pri===1?' sorted sorted-primary':' sorted'):'')+'" data-sort="'+idx
+      +'" title="Sort by '+STAT[idx].name+' ('+STAT[idx].code+')">'+STAT[idx].abbr+mark+'</th>';
   });
   h+='</tr></thead><tbody>';
   h+='<tr class="wl-'+weightClass(base[5])+'"><td class="name"><b>BASE build</b></td>';
@@ -746,11 +759,20 @@ function wirePickers(){
     });
   });
   document.getElementById('trueup').addEventListener('change', runFinder);
-  // sortable finder headers: click to sort, click again to flip direction
+  // sortable finder headers: click a stat to make it the primary key; earlier
+  // clicks become tiebreakers. Click the primary again to flip its direction.
+  // Click the Build header to clear all sorting.
   document.getElementById('finder-table').addEventListener('click', e=>{
-    const th = e.target.closest('th.sortable'); if(!th) return;
+    const th = e.target.closest('th'); if(!th) return;
+    if(th.classList.contains('name')){ if(sortKeys.length){ sortKeys=[]; runFinder(); } return; }
+    if(!th.classList.contains('sortable')) return;
     const idx = +th.dataset.sort;
-    if(sortStat === idx) sortDir = -sortDir; else { sortStat = idx; sortDir = 1; }
+    if(sortKeys[0] && sortKeys[0].stat === idx){
+      sortKeys[0].dir = -sortKeys[0].dir;           // toggle primary direction
+    } else {
+      sortKeys = sortKeys.filter(k => k.stat !== idx);
+      sortKeys.unshift({stat: idx, dir: 1});        // new primary, keep others as tiebreakers
+    }
     runFinder();
   });
 }
