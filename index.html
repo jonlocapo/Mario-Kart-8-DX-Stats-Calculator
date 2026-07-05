@@ -193,8 +193,7 @@
 
     <div class="sephead">Find better builds (live &mdash; base is the build above)</div>
     <div class="opts">
-      <label><input type="checkbox" id="trueup"> True upgrades only (never worse in any stat)</label>
-      &nbsp;|&nbsp; Per-stat condition vs base:
+      Per-stat condition vs base:
       <span id="cond-mount"></span>
     </div>
     <div class="note">Matching builds: <span class="count" id="finder-count">0</span> (group-based combos; showing up to 300). Cells coloured <span class="cell-up">green</span> = higher than base, <span class="cell-dn">red</span> = lower. Rows shaded by weight class. Click a stat header to sort by it; click more headers to add tiebreakers (newest = primary, numbered by priority), click the primary again to flip direction, or click the Build header to reset. Default order is best upgrades first.</div>
@@ -546,7 +545,6 @@ function weightClass(sum){
 }
 function runFinder(){
   const base = currentVector();
-  const trueUp = document.getElementById('trueup').checked;
   const conds = TABLE_ORDER.map(i=>[i,getCond(i)]);
   const results = [];
   for(const c of COMBOS){
@@ -555,11 +553,6 @@ function runFinder(){
     let ok=true;
     for(const [i,sym] of conds){ if(sym!=='n/a' && !condOk(sym, v[i], base[i])){ ok=false; break; } }
     if(!ok) continue;
-    if(trueUp){
-      let worse=false, better=false;
-      for(let k=0;k<NST;k++){ if(v[k]<base[k]){worse=true;break;} if(v[k]>base[k]) better=true; }
-      if(worse||!better) continue;
-    }
     // exclude identical to base
     let same=true; for(let k=0;k<NST;k++){ if(v[k]!==base[k]){same=false;break;} }
     if(same) continue;
@@ -888,7 +881,6 @@ function wirePickers(){
       sel[cat]=+e.target.value; refreshBuild();
     });
   });
-  document.getElementById('trueup').addEventListener('change', runFinder);
   // sortable finder headers: click a stat to make it the primary key; earlier
   // clicks become tiebreakers. Click the primary again to flip its direction.
   // Click the Build header to clear all sorting.
