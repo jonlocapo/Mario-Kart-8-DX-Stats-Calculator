@@ -91,6 +91,7 @@
   table.data th.sortable:hover { background: #555; }
   table.data th.sorted { background: #1a6e1a; }
   table.data td.name { text-align: left; white-space: normal; min-width: 150px; }
+  table.data td.opts { text-align: left; white-space: normal; vertical-align: top; min-width: 120px; max-width: 300px; }
   table.data td.sepcol, table.data th.sepcol { background: #000; padding: 0 2px; min-width: 2px; }
   .cell-up { background: #bff0bf; }
   .cell-dn { background: #f4bcbc; }
@@ -192,8 +193,9 @@
       <select class="axis" id="ax-x"></select>
       &nbsp; Y axis:
       <select class="axis" id="ax-y"></select>
-      &nbsp; <span class="note">Frontier combos: <span class="count" id="pareto-count">0</span> &nbsp;|&nbsp; total combos: <span class="count" id="combo-count">0</span></span>
+      &nbsp; <span class="note">Frontier: <span class="count" id="pareto-count">0</span> &nbsp;|&nbsp; total combos: <span class="count" id="combo-count">0</span></span>
     </div>
+    <div class="note">Each frontier point can be reached by many builds. The table lists, per point, every distinct part group that appears in a frontier build for that slot &mdash; hover or click a chip for its members.</div>
     <div class="row">
       <div style="flex:0 0 auto">
         <svg class="pareto" id="pareto-svg" width="440" height="360"></svg>
@@ -607,24 +609,36 @@ function runPareto(){
   const xi=+document.getElementById('ax-x').value;
   const yi=+document.getElementById('ax-y').value;
   document.getElementById('combo-count').textContent = COMBOS.length;
-  // aggregate to unique (x,y) points, keep a representative combo (max sum of the two)
+  // unique (x,y) points
   const pts = new Map();
   for(const c of COMBOS){
-    const x=c.s[xi], y=c.s[yi], key=x+','+y;
-    const cur = pts.get(key);
-    if(!cur || (c.s[xi]+c.s[yi]) > (cur.c.s[xi]+cur.c.s[yi])) pts.set(key,{x,y,c});
+    const key = c.s[xi]+','+c.s[yi];
+    if(!pts.has(key)) pts.set(key, {x:c.s[xi], y:c.s[yi]});
   }
   const P=[...pts.values()];
-  // pareto frontier: not dominated (higher-or-equal on both, strictly higher on at least one)
+  // pareto frontier: not dominated (both >=, strictly > on at least one)
   P.forEach(p=>{
     p.front = !P.some(q => q!==p && q.x>=p.x && q.y>=p.y && (q.x>p.x||q.y>p.y));
   });
+  const frontKeys = new Set(P.filter(p=>p.front).map(p=>p.x+','+p.y));
+  // for every frontier point, collect build count + distinct groups per slot across ALL builds on it
+  const info = {};
+  frontKeys.forEach(k=> info[k]={count:0, d:new Set(), b:new Set(), t:new Set(), g:new Set()});
+  let totalBuilds = 0;
+  for(const c of COMBOS){
+    const k = c.s[xi]+','+c.s[yi];
+    const fi = info[k];
+    if(!fi) continue;
+    fi.count++; totalBuilds++;
+    fi.d.add(c.di); fi.b.add(c.bi); fi.t.add(c.ti); fi.g.add(c.gi);
+  }
   const front = P.filter(p=>p.front).sort((a,b)=> a.x-b.x || b.y-a.y);
-  document.getElementById('pareto-count').textContent = front.length;
-  drawPareto(P, front, xi, yi);
-  renderParetoTable(front, xi, yi);
+  document.getElementById('pareto-count').textContent =
+      front.length + ' points / ' + totalBuilds.toLocaleString() + ' builds';
+  drawPareto(P, front, xi, yi, info);
+  renderParetoTable(front, xi, yi, info);
 }
-function drawPareto(P, front, xi, yi){
+function drawPareto(P, front, xi, yi, info){
   const svg=document.getElementById('pareto-svg');
   const W=440,H=360, pad=40;
   const xs=P.map(p=>p.x), ys=P.map(p=>p.y);
@@ -651,17 +665,30 @@ function drawPareto(P, front, xi, yi){
   let line='';
   front.forEach((p,i)=>{ line += (i?' L':'M')+sx(p.x)+' '+sy(p.y); });
   s+='<path d="'+line+'" fill="none" stroke="#c00000" stroke-width="1.5"/>';
-  front.forEach(p=>{ s+='<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="3.4" fill="#c00000" stroke="#000"/>'; });
+  front.forEach(p=>{ const fi=info[p.x+','+p.y];
+    s+='<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="3.4" fill="#c00000" stroke="#000"><title>'
+      +STAT[xi].abbr+' '+fmt(p.x)+', '+STAT[yi].abbr+' '+fmt(p.y)+' — '+fi.count.toLocaleString()+' builds</title></circle>'; });
   // axis titles
   s+='<text x="'+((W)/2)+'" y="'+(H-4)+'" font-size="9" text-anchor="middle" font-weight="bold">'+STAT[xi].name+'</text>';
   s+='<text x="12" y="'+(H/2)+'" font-size="9" text-anchor="middle" font-weight="bold" transform="rotate(-90 12 '+(H/2)+')">'+STAT[yi].name+'</text>';
   svg.innerHTML=s;
 }
-function renderParetoTable(front, xi, yi){
+function renderParetoTable(front, xi, yi, info){
   const t=document.getElementById('pareto-table');
-  let h='<thead><tr><th class="name">Frontier build</th><th title="'+STAT[xi].name+'">'+STAT[xi].abbr+'</th><th title="'+STAT[yi].name+'">'+STAT[yi].abbr+'</th></tr></thead><tbody>';
+  let h='<thead><tr>'
+    +'<th title="'+STAT[xi].name+'">'+STAT[xi].abbr+'</th>'
+    +'<th title="'+STAT[yi].name+'">'+STAT[yi].abbr+'</th>'
+    +'<th>Builds</th>'
+    +'<th class="name">Driver options</th>'
+    +'<th class="name">Body options</th>'
+    +'<th class="name">Tire options</th>'
+    +'<th class="name">Glider options</th>'
+    +'</tr></thead><tbody>';
+  const cell=(cat,set)=> '<td class="opts">'+[...set].sort((a,b)=>a-b).map(gi=>chip(cat,gi)).join('')+'</td>';
   front.slice().sort((a,b)=> b.x-a.x || b.y-a.y).forEach(p=>{
-    h+='<tr class="wl-'+weightClass(p.c.s[5])+'"><td class="name">'+nameFor(p.c)+'</td><td>'+fmt(p.x)+'</td><td>'+fmt(p.y)+'</td></tr>';
+    const fi=info[p.x+','+p.y];
+    h+='<tr><td><b>'+fmt(p.x)+'</b></td><td><b>'+fmt(p.y)+'</b></td><td>'+fi.count.toLocaleString()+'</td>'
+      +cell('driver',fi.d)+cell('body',fi.b)+cell('tire',fi.t)+cell('glider',fi.g)+'</tr>';
   });
   h+='</tbody>';
   t.innerHTML=h;
