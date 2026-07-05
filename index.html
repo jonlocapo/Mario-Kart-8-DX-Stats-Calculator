@@ -87,6 +87,9 @@
   table.data th {
     background: #333; color: #fff; position: sticky; top: 0; z-index: 2;
   }
+  table.data th.sortable { cursor: pointer; user-select: none; }
+  table.data th.sortable:hover { background: #555; }
+  table.data th.sorted { background: #1a6e1a; }
   table.data td.name { text-align: left; white-space: normal; min-width: 150px; }
   table.data td.sepcol, table.data th.sepcol { background: #000; padding: 0 2px; min-width: 2px; }
   .cell-up { background: #bff0bf; }
@@ -173,7 +176,7 @@
       &nbsp;|&nbsp; Per-stat condition vs base:
       <span id="cond-mount"></span>
     </div>
-    <div class="note">Matching builds: <span class="count" id="finder-count">0</span> (group-based combos; showing up to 300). Cells coloured <span class="cell-up">green</span> = higher than base, <span class="cell-dn">red</span> = lower. Rows shaded by weight class.</div>
+    <div class="note">Matching builds: <span class="count" id="finder-count">0</span> (group-based combos; showing up to 300). Cells coloured <span class="cell-up">green</span> = higher than base, <span class="cell-dn">red</span> = lower. Rows shaded by weight class. Click a stat header to sort (again to flip direction); default order is best upgrades first.</div>
     <div class="tablewrap">
       <table class="data" id="finder-table"></table>
     </div>
@@ -302,20 +305,21 @@ gliders:[
 };
 
 /* ---------- stat metadata ---------- */
+/* abbr = readable label; code = the game's internal stat code (from the wiki) */
 const STAT = [
-  {name:"Ground Speed",         abbr:"SL", color:"#f4c020"},
-  {name:"Water Speed",          abbr:"SW", color:"#3b8ed8"},
-  {name:"Anti-Gravity Speed",   abbr:"SA", color:"#46b846"},
-  {name:"Air Speed",            abbr:"SG", color:"#f0f0f0"},
-  {name:"Acceleration",         abbr:"AC", color:"#e8802a"},
-  {name:"Weight",               abbr:"WG", color:"#9b7fc4"},
-  {name:"Ground Handling",      abbr:"TL", color:"#f4c020"},
-  {name:"Water Handling",       abbr:"TW", color:"#3b8ed8"},
-  {name:"Anti-Gravity Handling",abbr:"TA", color:"#46b846"},
-  {name:"Air Handling",         abbr:"TG", color:"#f0f0f0"},
-  {name:"Traction",             abbr:"OF", color:"#d95c5c"},
-  {name:"Mini-Turbo",           abbr:"MT", color:"#4bbfae"},
-  {name:"Invincibility",        abbr:"IV", color:"#b0b0b0"}
+  {name:"Ground Speed",         abbr:"Spd",     code:"SL", color:"#f4c020"},
+  {name:"Water Speed",          abbr:"Spd·W",   code:"SW", color:"#3b8ed8"},
+  {name:"Anti-Gravity Speed",   abbr:"Spd·AG",  code:"SA", color:"#46b846"},
+  {name:"Air Speed",            abbr:"Spd·Air", code:"SG", color:"#f0f0f0"},
+  {name:"Acceleration",         abbr:"Accel",   code:"AC", color:"#e8802a"},
+  {name:"Weight",               abbr:"Weight",  code:"WG", color:"#9b7fc4"},
+  {name:"Ground Handling",      abbr:"Hnd",     code:"TL", color:"#f4c020"},
+  {name:"Water Handling",       abbr:"Hnd·W",   code:"TW", color:"#3b8ed8"},
+  {name:"Anti-Gravity Handling",abbr:"Hnd·AG",  code:"TA", color:"#46b846"},
+  {name:"Air Handling",         abbr:"Hnd·Air", code:"TG", color:"#f0f0f0"},
+  {name:"Traction / Grip",      abbr:"Grip",    code:"OF", color:"#d95c5c"},
+  {name:"Mini-Turbo",           abbr:"M.Turbo", code:"MT", color:"#4bbfae"},
+  {name:"Invincibility",        abbr:"Invinc",  code:"IV", color:"#b0b0b0"}
 ];
 const NST = 13;
 const CORE = [0,4,5,6,10,11];         // ground speed, accel, weight, ground handling, traction, mini-turbo
@@ -451,6 +455,7 @@ function drawMeter(idx, sum){
 }
 
 /* ---------- finder ---------- */
+let sortStat = null, sortDir = 1;   // sortDir: 1 = descending, -1 = ascending
 const CONDS = ['n/a','<','≤','=','≥','>'];
 function buildConditionRows(){
   const mount = document.getElementById('cond-mount');
@@ -519,7 +524,11 @@ function runFinder(){
     for(let k=0;k<NST;k++){ const d=v[k]-base[k]; if(d>0)imp++; tot+=d; }
     results.push({c, imp, tot});
   }
-  results.sort((a,b)=> b.imp-a.imp || b.tot-a.tot);
+  if(sortStat !== null){
+    results.sort((a,b)=> (b.c.s[sortStat]-a.c.s[sortStat])*sortDir || b.imp-a.imp || b.tot-a.tot);
+  } else {
+    results.sort((a,b)=> b.imp-a.imp || b.tot-a.tot);
+  }
   document.getElementById('finder-count').textContent = results.length;
   renderFinderTable(results.slice(0,300), base);
 }
@@ -556,7 +565,9 @@ function renderFinderTable(rows, base){
   let h = '<thead><tr><th class="name">Build (Driver / Body / Tire / Glider groups)</th>';
   TABLE_ORDER.forEach((idx,pos)=>{
     if(pos===CORE.length) h+='<th class="sepcol"></th>';
-    h+='<th title="'+STAT[idx].name+'">'+STAT[idx].abbr+'</th>';
+    const active = sortStat===idx;
+    const arrow = active ? (sortDir>0 ? ' ▼' : ' ▲') : '';
+    h+='<th class="sortable'+(active?' sorted':'')+'" data-sort="'+idx+'" title="Sort by '+STAT[idx].name+' ('+STAT[idx].code+')">'+STAT[idx].abbr+arrow+'</th>';
   });
   h+='</tr></thead><tbody>';
   h+='<tr class="wl-'+weightClass(base[5])+'"><td class="name"><b>BASE build</b></td>';
@@ -708,6 +719,13 @@ function wirePickers(){
     });
   });
   document.getElementById('trueup').addEventListener('change', runFinder);
+  // sortable finder headers: click to sort, click again to flip direction
+  document.getElementById('finder-table').addEventListener('click', e=>{
+    const th = e.target.closest('th.sortable'); if(!th) return;
+    const idx = +th.dataset.sort;
+    if(sortStat === idx) sortDir = -sortDir; else { sortStat = idx; sortDir = 1; }
+    runFinder();
+  });
 }
 
 /* ---------- init ---------- */
